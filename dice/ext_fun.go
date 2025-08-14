@@ -1,6 +1,8 @@
 package dice
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"hash/fnv"
 	"math/rand"
@@ -538,17 +540,26 @@ func RegisterBuiltinExtFun(self *Dice) {
 
 	cmdJrrp := CmdItemInfo{
 		Name:      "jrrp",
-		ShortHelp: ".jrrp 获得一个D100随机值，一天内不会变化",
-		Help:      "今日人品:\n.jrrp 获得一个D100随机值，一天内不会变化",
+		ShortHelp: ".jrrp 获得一个D100随机值，一天内不会变化\n.jrrp Astral 使用ZhaoDice版本算法",
+		Help:      "今日人品:\n.jrrp 获得一个D100随机值，一天内不会变化\n.jrrp Astral 使用ZhaoDice版本算法",
 		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
 			if cmdArgs.IsArgEqual(1, "help") {
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
-			rpSeed := (time.Now().Unix() + (8 * 60 * 60)) / (24 * 60 * 60)
-			rpSeed += int64(fingerprint(ctx.EndPoint.UserID))
-			rpSeed += int64(fingerprint(ctx.Player.UserID))
-			randItem := rand.NewSource(rpSeed)
-			rp := randItem.Int63()%100 + 1
+
+			var rp int64
+
+			// 检查是否使用ZhaoDice版本算法
+			if cmdArgs.IsArgEqual(1, "Astral") || cmdArgs.IsArgEqual(1, "ZhaoDice") {
+				rp = fingerprintZhaoDice(UserIDExtract(ctx.Player.UserID))
+			} else {
+				// 原有的Go版本算法
+				rpSeed := (time.Now().Unix() + (8 * 60 * 60)) / (24 * 60 * 60)
+				rpSeed += int64(fingerprint(ctx.EndPoint.UserID))
+				rpSeed += int64(fingerprint(ctx.Player.UserID))
+				randItem := rand.NewSource(rpSeed)
+				rp = randItem.Int63()%100 + 1
+			}
 
 			VarSetValueInt64(ctx, "$t人品", rp)
 			ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "娱乐:今日人品"))
@@ -1411,4 +1422,34 @@ func fingerprint(b string) uint64 {
 	hash := fnv.New64a()
 	_, _ = hash.Write([]byte(b))
 	return hash.Sum64()
+}
+
+func fingerprintZhaoDice(userID string) int64 {
+	// 获取当前日期字符串 (YYYY-MM-DD格式)
+	dateStr := time.Now().Format("2006-01-02")
+
+	// 拼接日期和用户ID
+	input := dateStr + userID
+
+	// 计算MD5哈希
+	hash := md5.Sum([]byte(input))
+	hashStr := hex.EncodeToString(hash[:])
+
+	// 取哈希的前2个字符
+	hexPart := hashStr[:2]
+
+	// 转换为十六进制数值
+	hexVal, err := strconv.ParseInt(hexPart, 16, 64)
+	if err != nil {
+		return 1 // 出错时返回默认值
+	}
+
+	// 限制在0-255范围内 (相当于Lua的bit32.band(i,0xff))
+	hexVal = hexVal & 0xff
+
+	// 映射到1-100范围
+	result := float64(hexVal)/255.0*99.0 + 1.0
+
+	// 去掉小数部分
+	return int64(result)
 }
