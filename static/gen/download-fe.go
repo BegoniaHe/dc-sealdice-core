@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const uiResourcesURL = "https://github.com/DCRepairCenter/sealdice-ui/releases/download/pre-release/sealdice-ui.zip"
+const uiResourcesURL = "https://github.com/sealdice/sealdice-ui/releases/download/pre-release/sealdice-ui.zip"
 
 func main() {
 	defer func() {
